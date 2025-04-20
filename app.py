@@ -8,7 +8,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, FSInputFile, ReplyKeyboardRemove
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
-from config import BOT_TOKEN
+from config import BOT_TOKEN, ALLOWED_USERS
 import asyncio
 import os
 import keyboards as kb
@@ -28,13 +28,23 @@ class Data(StatesGroup):
     file_type = State()
 
 
+def is_authorized(func):
+    async def wrapper(message: Message, *args, **kwargs):
+        if message.from_user.id in ALLOWED_USERS:
+            return await func(message, *args, **kwargs)
+        else:
+            await message.answer("⛔ У вас нет доступа к этому боту.")
+    return wrapper
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer("👋 Добро пожаловать! Пришлите PDF-файл(ы)")
 
 
 @dp.message(F.document)
-async def handle_pdf(message: Message, bot: Bot, state: FSMContext):
+@is_authorized
+async def handle_pdf(message: Message, state: FSMContext, **kwargs):
     document = message.document
 
     if document.mime_type != "application/pdf":
