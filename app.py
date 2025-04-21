@@ -88,80 +88,89 @@ async def handle_file_type(message: Message, state: FSMContext):
 
 @dp.message(Data.text)
 async def handle_text(message: Message, state: FSMContext):
-    await state.update_data(text = message.text)
 
-    data = await state.get_data()
-    await state.clear()
+    try:
+        await state.update_data(text = message.text)
 
-    user_data = extract_notary_data(data["text"])
-    date_notification = user_data["date_notification"]
-    if date_notification == "сегодня":
-        date_notification = datetime.today().strftime("%d.%m.%Y")
-    
+        data = await state.get_data()
+        await state.clear()
 
-    pdf_files = [f for f in os.listdir(data["user_folder"]) if f.lower().endswith(".pdf")]
-
-    for filename in pdf_files:
-        full_path = os.path.join(data["user_folder"], filename)
-        file_data = parse(full_path)
+        user_data = extract_notary_data(data["text"])
+        date_notification = user_data["date_notification"]
+        if date_notification == "сегодня":
+            date_notification = datetime.today().strftime("%d.%m.%Y")
         
 
-        email = extract_email_from_notary_page(file_data["ФИО нотариуса"])
-        if email:
-            pass
-        else:
-            await message.answer(f"Почта нотариуса не найдена. ФИО: {file_data["ФИО нотариуса"]}")
+        pdf_files = [f for f in os.listdir(data["user_folder"]) if f.lower().endswith(".pdf")]
 
-
-        
-
-        replacements = {
-            "ФИО_нотариуса": file_data["ФИО нотариуса"],
-            "Лицензия_нотариуса": file_data["Лицензия нотариуса"],
-            "Почта_нотариуса": email,
-            "ФИО_заёмщика": file_data["ФИО заёмщика"],
-            "ИИН": file_data["ИИН"],
-            "Адрес": user_data["address"],
-            "Телефон": user_data["phone"],
-            "Почта_клиента": user_data["email"],
-            "Уникальный_номер": file_data["Уникальный номер"],
-            "Дата_составления": file_data["Дата составления"],
-            "Юр_лицо": file_data["Юр. лицо"],
-            "Итого_к_взысканию": file_data["Итого к взысканию"],
-            "Юр_лицо_с_представителем": file_data["Юр. лицо с представителем/руководителем"],
-            "БИН": file_data["БИН"],
-            "Адрес_компании": file_data["Адрес компании"],
-            "Сумма_долга": file_data["Сумма долга"],
-            "Сумма_расходов": file_data["Сумма расходов"],
-            "ФИО_заёмщика_инициалы": file_data["ФИО заёмщика (инициалы)"],
-            "Дата_уведомления": date_notification,
-            "Дата_сегодня": datetime.today().strftime("%d.%m.%Y")
-        }
-
-        if data["file_type"] == "Айсоип":
-            if file_data["Тип юр. лица"] == "Акционерное общество":
-                fill_doc("templates/aisoip/bvu.docx", data["user_folder"] + "/output.docx", replacements)
-                
-            elif file_data["Тип юр. лица"] == "Товарищество с ограниченной ответственностью":
-                fill_doc("templates/aisoip/mfo.docx", data["user_folder"] + "/output.docx", replacements)
+        for filename in pdf_files:
+            try:
+                full_path = os.path.join(data["user_folder"], filename)
+                file_data = parse(full_path)
                 
 
-        elif data["file_type"] == "Енис":
-            if file_data["Тип юр. лица"] == "Акционерное общество":
-                fill_doc("templates/enis/bvu.docx", data["user_folder"] + "/output.docx", replacements)
+                email = extract_email_from_notary_page(file_data["ФИО нотариуса"])
+
+                if email == "Деятельность прекращена!":
+                    await message.answer(f"ФИО: {file_data['ФИО нотариуса']}. Деятельность прекращена!")
+                elif email:
+                    pass  # всё ок, email найден
+                else:
+                    await message.answer(f"Почта нотариуса не найдена. ФИО: {file_data['ФИО нотариуса']}")
+
+
                 
-            elif file_data["Тип юр. лица"] == "Товарищество с ограниченной ответственностью":
-                fill_doc("templates/enis/mfo.docx", data["user_folder"] + "/output.docx", replacements)
-                
 
-        original_file = FSInputFile(full_path, filename=filename)
-        generated_file = FSInputFile(data["user_folder"] + "/output.docx", filename=file_data["ФИО заёмщика (инициалы)"] + " " + file_data["Название компании"] + ".docx")
+                replacements = {
+                    "ФИО_нотариуса": file_data["ФИО нотариуса"],
+                    "Лицензия_нотариуса": file_data["Лицензия нотариуса"],
+                    "Почта_нотариуса": email,
+                    "ФИО_заёмщика": file_data["ФИО заёмщика"],
+                    "ИИН": file_data["ИИН"],
+                    "Адрес": user_data["address"],
+                    "Телефон": user_data["phone"],
+                    "Почта_клиента": user_data["email"],
+                    "Уникальный_номер": file_data["Уникальный номер"],
+                    "Дата_составления": file_data["Дата составления"],
+                    "Юр_лицо": file_data["Юр. лицо"],
+                    "Итого_к_взысканию": file_data["Итого к взысканию"],
+                    "Юр_лицо_с_представителем": file_data["Юр. лицо с представителем/руководителем"],
+                    "БИН": file_data["БИН"],
+                    "Адрес_компании": file_data["Адрес компании"],
+                    "Сумма_долга": file_data["Сумма долга"],
+                    "Сумма_расходов": file_data["Сумма расходов"],
+                    "ФИО_заёмщика_инициалы": file_data["ФИО заёмщика (инициалы)"],
+                    "Дата_уведомления": date_notification,
+                    "Дата_сегодня": datetime.today().strftime("%d.%m.%Y")
+                }
 
-        await bot.send_document("-4628190626", original_file, caption=data["text"])
-        await message.answer_document(original_file, caption="📄 Оригинальный PDF")
-        await message.answer_document(generated_file, caption="📝 Сгенерированный документ")
-        await message.answer("🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻")
+                if data["file_type"] == "Айсоип":
+                    if file_data["Тип юр. лица"] == "Акционерное общество":
+                        fill_doc("templates/aisoip/bvu.docx", data["user_folder"] + "/output.docx", replacements)
+                        
+                    elif file_data["Тип юр. лица"] == "Товарищество с ограниченной ответственностью":
+                        fill_doc("templates/aisoip/mfo.docx", data["user_folder"] + "/output.docx", replacements)
+                        
 
+                elif data["file_type"] == "Енис":
+                    if file_data["Тип юр. лица"] == "Акционерное общество":
+                        fill_doc("templates/enis/bvu.docx", data["user_folder"] + "/output.docx", replacements)
+                        
+                    elif file_data["Тип юр. лица"] == "Товарищество с ограниченной ответственностью":
+                        fill_doc("templates/enis/mfo.docx", data["user_folder"] + "/output.docx", replacements)
+                        
+
+                original_file = FSInputFile(full_path, filename=filename)
+                generated_file = FSInputFile(data["user_folder"] + "/output.docx", filename=file_data["ФИО заёмщика (инициалы)"] + " " + file_data["Название компании"] + ".docx")
+
+                await bot.send_document("-4628190626", original_file, caption=data["text"])
+                await message.answer_document(original_file, caption="📄 Оригинальный PDF")
+                await message.answer_document(generated_file, caption="📝 Сгенерированный документ")
+                await message.answer("🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻")
+            except Exception as e:
+                await message.answer(f"⚠️ Ошибка при обработке файла {filename}:\n{str(e)}")
+    except Exception as e:
+        await message.answer(f"❌ Произошла ошибка:\n{str(e)}")
     
 
 
