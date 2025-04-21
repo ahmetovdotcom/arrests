@@ -59,7 +59,7 @@ def parse(file_path):
 
     # Адрес компании
     company_address_match = re.search(
-        r'БИН\s+\d{12},\s+местонахождение:\s+(.*?)(?:КОНТАКТЫ|ИИК)',
+        r'БИН\s+\d{12},\s+местонахождение:\s+(.*?)(?:КОНТАКТЫ|ИИК|Контакты)',
         full_text, re.DOTALL)
     company_address = clean(company_address_match.group(1)) if company_address_match else None
 
