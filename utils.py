@@ -16,16 +16,21 @@ def clean(text):
 
 def normalize_amount(amount_str):
     """
-    Приводит строку с суммой к целому числу в тенге.
-    Убирает пробелы, обрезает копейки, возвращает строку.
+    Приводит строку с суммой к строке.
+    Убирает пробелы, заменяет запятые на точки.
+    Если есть копейки — сохраняет их, иначе возвращает только целую часть.
     """
     if not amount_str:
         return None
     cleaned = amount_str.replace(' ', '').replace(',', '.')
-    match = re.match(r'(\d+)(\.\d+)?', cleaned)
-    if match:
-        return str(int(float(match.group(0))))
-    return None
+    try:
+        amount = float(cleaned)
+        if amount.is_integer():
+            return str(int(amount))  # без копеек
+        else:
+            return str(amount)  # с копейками
+    except ValueError:
+        return None
 
 def normalize_name(name):
     return ' '.join(word.capitalize() for word in name.split())
@@ -33,14 +38,21 @@ def normalize_name(name):
 def format_amount_with_words(amount_str):
     """
     Преобразует сумму в строку вида:
-    "123456 тенге (сто двадцать три тысячи четыреста пятьдесят шесть тенге)"
+    "123456.78 тенге (сто двадцать три тысячи четыреста пятьдесят шесть тенге 78 тиынов)"
     """
     if not amount_str:
         return None
     try:
-        amount_int = int(amount_str)
-        words = num2words(amount_int, lang='ru')
-        return f"{amount_str} тенге ({words} тенге)"
+        parts = amount_str.split('.')
+        tenge = int(parts[0])
+        tiyn = int(parts[1]) if len(parts) > 1 else 0
+
+        tenge_words = num2words(tenge, lang='ru')
+        if tiyn > 0:
+            tiyn_words = num2words(tiyn, lang='ru')
+            return f"{amount_str} тенге ({tenge_words} тенге {tiyn_words} тиынов)"
+        else:
+            return f"{amount_str} тенге ({tenge_words} тенге)"
     except:
         return f"{amount_str} тенге"
 
