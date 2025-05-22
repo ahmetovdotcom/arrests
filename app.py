@@ -142,7 +142,9 @@ async def handle_text(message: Message, state: FSMContext):
                 "Сумма_расходов": file_data["Сумма расходов"],
                 "ФИО_заёмщика_инициалы": file_data["ФИО заёмщика (инициалы)"],
                 "Дата_уведомления": date_notification,
-                "Дата_сегодня": datetime.today().strftime("%d.%m.%Y")
+                "Дата_сегодня": datetime.today().strftime("%d.%m.%Y"),
+                "получил": "получил" if user_data["isMale"] == True else "получила",
+                "согласен": "согласен" if user_data["isMale"] == True else "согласна"
             }
 
             if data["file_type"] == "Айсоип":
