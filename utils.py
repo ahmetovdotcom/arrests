@@ -1,7 +1,7 @@
 from num2words import num2words
 import re
-
-
+import os
+import json
 
 
 
@@ -88,5 +88,52 @@ def extract_company_core_name(company_full_name):
     return company_core.strip()
 
 
+USERS_FILE = "allowed_users.json"
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return []
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+
+
+def add_user(user_id, first_name="", last_name="", username=""):
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w") as f:
+            json.dump({}, f)
+
+    with open(USERS_FILE, "r") as f:
+        users = json.load(f)
+
+    users[str(user_id)] = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "username": username
+    }
+
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+def remove_user(user_id):
+    users = get_user_list()
+    users.pop(str(user_id), None)
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+def get_user_list():
+    if not os.path.exists(USERS_FILE):
+        return {}
+
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def is_user_allowed(user_id):
+    users = get_user_list()
+    return str(user_id) in users
 
 

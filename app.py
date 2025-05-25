@@ -2,17 +2,21 @@ from parser import parse
 from parse_email import extract_email_from_notary_page
 from docx_replacer import fill_doc
 from gpt import extract_notary_data
-
+from config import ADMIN_ID
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, FSInputFile, ReplyKeyboardRemove
+from aiogram.filters import CommandStart, Command, BaseFilter
+from aiogram.types import Message, FSInputFile, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from config import BOT_TOKEN, ALLOWED_USERS
 import asyncio
 import os
+import json
 import keyboards as kb
 from datetime import datetime
+from utils import add_user, is_user_allowed, get_user_list, remove_user
+
+
 
 
 
@@ -27,13 +31,17 @@ class Data(StatesGroup):
     text = State()
     file_type = State()
 
+class AccessRequestCallback:
+    APPROVE = "approve"
+    REJECT = "reject"
+
 
 def is_authorized(func):
     async def wrapper(message: Message, *args, **kwargs):
-        if message.from_user.id in ALLOWED_USERS:
+        if is_user_allowed(message.from_user.id):
             return await func(message, *args, **kwargs)
         else:
-            await message.answer("⛔ У вас нет доступа к этому боту.")
+            await message.answer("⛔ У вас нет доступа к этому боту.\n\nЧтобы запросить доступ, напишите \n/request")
     return wrapper
 
 
@@ -42,8 +50,115 @@ async def cmd_start(message: Message):
     await message.answer("👋 Добро пожаловать! Пришлите PDF-файл(ы)")
 
 
+@dp.message(Command("users"))
+async def list_users(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    users = get_user_list()
+    if not users:
+        await message.answer("📭 Список пользователей пуст.")
+        return
+
+    text = "📋 <b>Список пользователей:</b>\n\n"
+    for uid, info in users.items():
+        name = f"{info.get('first_name', '')} {info.get('last_name', '')}".strip()
+        username = f"@{info.get('username')}" if info.get('username') else "—"
+        text += f"• <b>{name}</b> {username} — <code>{uid}</code>\n/remove_{uid}\n\n"
+
+    await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(F.text.startswith("/remove_"))
+async def remove_user_command(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    user_id = int(message.text.split("_")[1])
+    remove_user(user_id)
+    await message.answer(f"❌ Пользователь {user_id} удалён.")
+    try:
+        await bot.send_message(user_id, "⚠️ Ваш доступ к боту был удалён администратором.")
+    except:
+        pass  # если пользователь заблокировал бота
+
+
+
+
+
+
+@dp.message(Command("request"))
+async def handle_request(message: Message):
+    user = message.from_user
+    text = (
+        f"👤 Запрос на доступ к боту\n\n"
+        f"ID: {user.id}\n"
+        f"Имя: {user.first_name} {user.last_name or ''}\n"
+        f"Юзернейм: @{user.username or 'нет'}\n\n"
+        f"Ниже кнопки для одобрения или отказа:"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="✅ Одобрить",
+                callback_data=f"{AccessRequestCallback.APPROVE}:{user.id}"
+            ),
+            InlineKeyboardButton(
+                text="❌ Отклонить",
+                callback_data=f"{AccessRequestCallback.REJECT}:{user.id}"
+            ),
+        ]
+    ])
+    await bot.send_message(ADMIN_ID, text, reply_markup=keyboard)
+    await message.answer("📩 Запрос отправлен администратору. Ожидайте одобрения.")
+
+
+
+
+
+@dp.callback_query(F.data.startswith((AccessRequestCallback.APPROVE, AccessRequestCallback.REJECT)))
+async def process_access_request_callback(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ У вас нет прав для этого действия.", show_alert=True)
+        return
+
+    action, user_id_str = callback.data.split(":")
+    user_id = int(user_id_str)
+
+    if action == AccessRequestCallback.APPROVE:
+        try:
+            chat_member = await bot.get_chat_member(chat_id=user_id, user_id=user_id)
+            user = chat_member.user
+            add_user(
+                user_id,
+                first_name=user.first_name or "",
+                last_name=user.last_name or "",
+                username=user.username or ""
+            )
+            await callback.message.edit_text(f"✅ Пользователь {user_id} одобрен.")
+            await bot.send_message(user_id, "🎉 Ваш доступ к боту одобрен. Можете начать работу!")
+        except Exception as e:
+            await callback.message.answer(f"Ошибка при одобрении: {e}")
+
+    elif action == AccessRequestCallback.REJECT:
+        await callback.message.edit_text(f"❌ Пользователь {user_id} отклонён.")
+        try:
+            await bot.send_message(user_id, "❌ Ваш запрос на доступ к боту отклонён.")
+        except:
+            pass
+
+    await callback.answer()  # чтобы убрать "часики" у кнопки
+
+
+
+
+
+
+
+
+
+
 @dp.message(F.document)
-# @is_authorized
+@is_authorized
 async def handle_pdf(message: Message, state: FSMContext, **kwargs):
     document = message.document
 
