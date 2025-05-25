@@ -90,6 +90,7 @@ async def remove_user_command(message: Message):
 
 @dp.callback_query(F.data == "request_access")
 async def request_access(callback: CallbackQuery):
+    await callback.message.edit_text("✅ Запрос отправлен администратору. Пожалуйста, ожидайте одобрения.")
     user = callback.from_user
     await callback.answer("⏳ Запрос отправлен админу.")
 
