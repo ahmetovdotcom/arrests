@@ -15,6 +15,7 @@ import json
 import keyboards as kb
 from datetime import datetime
 from utils import add_user, is_user_allowed, get_user_list, remove_user
+from datetime import datetime, timedelta
 
 
 
@@ -41,7 +42,10 @@ def is_authorized(func):
         if is_user_allowed(message.from_user.id):
             return await func(message, *args, **kwargs)
         else:
-            await message.answer("⛔ У вас нет доступа к этому боту.\n\nЧтобы запросить доступ, напишите \n/request")
+            await message.answer("🚫 У вас нет доступа. Хотите запросить его?",
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                 [InlineKeyboardButton(text="📩 Запросить доступ", callback_data="request_access")]
+                             ]))
     return wrapper
 
 
@@ -84,69 +88,69 @@ async def remove_user_command(message: Message):
 
 
 
+@dp.callback_query(F.data == "request_access")
+async def request_access(callback: CallbackQuery):
+    user = callback.from_user
+    await callback.answer("⏳ Запрос отправлен админу.")
 
-
-@dp.message(Command("request"))
-async def handle_request(message: Message):
-    user = message.from_user
-    text = (
-        f"👤 Запрос на доступ к боту\n\n"
-        f"ID: {user.id}\n"
-        f"Имя: {user.first_name} {user.last_name or ''}\n"
-        f"Юзернейм: @{user.username or 'нет'}\n\n"
-        f"Ниже кнопки для одобрения или отказа:"
-    )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="✅ Одобрить",
-                callback_data=f"{AccessRequestCallback.APPROVE}:{user.id}"
-            ),
-            InlineKeyboardButton(
-                text="❌ Отклонить",
-                callback_data=f"{AccessRequestCallback.REJECT}:{user.id}"
-            ),
-        ]
+        [InlineKeyboardButton(text="✅ 7 дней", callback_data=f"grant:{user.id}:7")],
+        [InlineKeyboardButton(text="✅ 14 дней", callback_data=f"grant:{user.id}:14")],
+        [InlineKeyboardButton(text="✅ 30 дней", callback_data=f"grant:{user.id}:30")],
+        [InlineKeyboardButton(text="✅ Навсегда", callback_data=f"grant:{user.id}:0")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"deny:{user.id}")]
     ])
-    await bot.send_message(ADMIN_ID, text, reply_markup=keyboard)
-    await message.answer("📩 Запрос отправлен администратору. Ожидайте одобрения.")
 
+    await bot.send_message(ADMIN_ID,
+        f"📥 Запрос от @{user.username or '-'}\nID: {user.id}\nИмя: {user.first_name}",
+        reply_markup=keyboard)
+    
+    
+@dp.callback_query(F.data.startswith("grant:"))
+async def grant_access(callback: CallbackQuery):
+    _, user_id, days = callback.data.split(":")
+    user_id = int(user_id)
+    days = int(days)
 
+    user = await bot.get_chat(user_id)
 
+    # Вычисляем дату окончания
+    if days == 0:
+        until = "бессрочно"
+    else:
+        end_date = datetime.now() + timedelta(days=days)
+        until = end_date.strftime("%d.%m.%Y")
 
+    # Добавляем пользователя с датой окончания
+    add_user(user_id, user.first_name, user.last_name or "", user.username or "", days)
 
-@dp.callback_query(F.data.startswith((AccessRequestCallback.APPROVE, AccessRequestCallback.REJECT)))
-async def process_access_request_callback(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ У вас нет прав для этого действия.", show_alert=True)
-        return
+    await callback.answer("✅ Доступ выдан.")
 
-    action, user_id_str = callback.data.split(":")
-    user_id = int(user_id_str)
+    # Сообщение для пользователя
+    try:
+        await bot.send_message(
+            user_id,
+            f"✅ Вам выдан доступ до {until}." if days else "✅ Вам выдан постоянный доступ."
+        )
+    except:
+        pass
 
-    if action == AccessRequestCallback.APPROVE:
-        try:
-            chat_member = await bot.get_chat_member(chat_id=user_id, user_id=user_id)
-            user = chat_member.user
-            add_user(
-                user_id,
-                first_name=user.first_name or "",
-                last_name=user.last_name or "",
-                username=user.username or ""
-            )
-            await callback.message.edit_text(f"✅ Пользователь {user_id} одобрен.")
-            await bot.send_message(user_id, "🎉 Ваш доступ к боту одобрен. Можете начать работу!")
-        except Exception as e:
-            await callback.message.answer(f"Ошибка при одобрении: {e}")
+    # Обновляем сообщение админа (удаляем кнопки + пишем кому выдано)
+    full_name = f"{user.first_name} {user.last_name}".strip()
+    username = f"@{user.username}" if user.username else ""
+    await callback.message.edit_text(
+        f"✅ Доступ выдан пользователю {full_name} {username} (ID: <code>{user_id}</code>) до <b>{until}</b>.",
+        parse_mode="HTML"
+    )
 
-    elif action == AccessRequestCallback.REJECT:
-        await callback.message.edit_text(f"❌ Пользователь {user_id} отклонён.")
-        try:
-            await bot.send_message(user_id, "❌ Ваш запрос на доступ к боту отклонён.")
-        except:
-            pass
-
-    await callback.answer()  # чтобы убрать "часики" у кнопки
+@dp.callback_query(F.data.startswith("deny:"))
+async def deny_access(callback: CallbackQuery):
+    _, user_id = callback.data.split(":")
+    await callback.answer("❌ Запрос отклонён.")
+    try:
+        await bot.send_message(user_id, "🚫 Ваш запрос на доступ был отклонён.")
+    except:
+        pass
 
 
 
